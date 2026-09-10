@@ -1,7 +1,7 @@
 # Known issues
 
-Status of each item was established **on real hardware**: Kindle Paperwhite 5 (11th gen),
-firmware 5.19.2, kernel 4.9.77-lab126, Véra jailbreak.
+Hardware-related status was established on a real Kindle Paperwhite 5 (11th gen), firmware
+5.19.2, kernel 4.9.77-lab126, Véra jailbreak. Release automation status is established in CI.
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
@@ -9,7 +9,7 @@ firmware 5.19.2, kernel 4.9.77-lab126, Véra jailbreak.
 | 2 | Landscape (`O:LR`) renders with tearing | medium | open — portrait only |
 | 3 | On-screen keyboard (`onboard`) not wired up to MATE | medium | open |
 | 4 | Chromium `--touch-devices` hint may not resolve | low | untested |
-| 5 | No prebuilt GitHub Release | medium | open — users must build locally |
+| 5 | No prebuilt GitHub Release | medium | fixed in tree — `v*` tags publish a verified zip |
 | 6 | Memory and swap strategy needs tuning | medium | open — current disk swap works |
 | 7 | Uninstaller does not unload project-loaded kernel modules | low | latent — none are loaded today |
 
@@ -138,12 +138,17 @@ The `--touch-devices=${mouseid}` flag is resolved at launch time from
 `xinput list --id-only 'Xephyr virtual mouse'`. If the virtual pointer is named differently,
 that flag silently does nothing and touch scrolling in Chromium won't work. Unverified.
 
-## 5. No prebuilt GitHub Release
+## 5. Prebuilt GitHub Release — fixed
 
-CI builds and validates `alpine.zip`, but it currently uploads the zip only as a short-lived
-workflow artifact. There is no tagged GitHub Release asset yet, so every user must install
-the host build dependencies and build the image locally. Track this in
-[GitHub issue #5](https://github.com/adiglase/alpine-kindle/issues/5).
+A push of a `v*` tag now builds the documented 2560 MiB image and 512 MiB swap, creates the
+tagged GitHub Release if needed, and attaches `alpine.zip`, `alpine.zip.sha256`, and
+`BUILD-INFO.txt`. CI verifies the checksum and archive both before upload and after downloading
+the published assets. The README leads with this no-build path; local builds remain supported
+for custom image, swap, browser, or Alpine branch choices.
+
+No tagged image existed before this automation, so the first published image will be the first
+release with these assets. See [COMPATIBILITY.md](COMPATIBILITY.md#published-images) for the
+per-release Alpine version record.
 
 ## 6. Memory and swap strategy
 

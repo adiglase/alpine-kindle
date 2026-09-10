@@ -258,6 +258,9 @@ else
   rm -f "$SWAPIMG"
 fi
 
+ALPINE_BRANCH="$ALPINE_BRANCH" ARCH="$ARCH" IMAGESIZE_MB="$IMAGESIZE_MB" \
+SWAP_MB="$SWAP_MB" WITH_CHROMIUM="$WITH_CHROMIUM" \
+RELEASE_TAG="${RELEASE_TAG:-local build}" SOURCE_COMMIT="${SOURCE_COMMIT:-}" \
 "$HERE/create-release.sh"
 
 # Everything above ran as root, so the artifacts are root-owned. Hand them back to

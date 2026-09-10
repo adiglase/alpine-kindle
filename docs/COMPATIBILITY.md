@@ -3,6 +3,20 @@
 Everything below was checked against live sources rather than recalled from memory. Where a
 claim is a community report rather than something I could execute, it says so.
 
+## Published images
+
+There were no tagged images before the release automation was added. For every new `v*` tag,
+CI builds from the pinned Alpine `v3.24` branch and publishes three assets:
+`alpine.zip`, `alpine.zip.sha256`, and `BUILD-INFO.txt`. The build-info asset records the tag,
+source commit, and exact Alpine point release read from `/etc/alpine-release` in the image;
+the same file is included at `alpine-kindle-docs/BUILD-INFO.txt` inside the zip. This is the
+per-release compatibility record and makes point-release changes visible even when the stable
+branch advances.
+
+CI checks that the point release is `3.24.x`, verifies the checksum before upload, downloads
+the published assets again, and verifies the checksum, zip integrity, and embedded build-info
+copy. Releases therefore fail rather than publishing an asset that cannot pass those checks.
+
 ## Device matrix
 
 | Device | SoC / kernel | Userspace | Status |
