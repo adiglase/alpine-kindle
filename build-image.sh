@@ -258,8 +258,6 @@ else
   rm -f "$SWAPIMG"
 fi
 
-cp "$HERE/alpine.sh" "$OUTDIR/"
-cp "$HERE/contrib/alpine.conf" "$OUTDIR/"   # experimental: see docs/KNOWN-ISSUES.md
 "$HERE/create-release.sh"
 
 # Everything above ran as root, so the artifacts are root-owned. Hand them back to
@@ -273,4 +271,4 @@ echo "    image:   $IMAGE ($(du -h "$IMAGE" | cut -f1))"
 echo "    release: $OUTDIR/alpine.zip"
 echo
 echo "Next: read README.md - copy alpine.zip to /mnt/us on the Kindle, unzip it,"
-echo "then 'sh alpine.sh' (shell only) or 'start alpine' (MATE desktop)."
+echo "then run 'sh /mnt/us/install.sh'."

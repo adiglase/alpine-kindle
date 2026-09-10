@@ -69,7 +69,14 @@ jobs:
           debugfs -R "cat /etc/alpine-release" release/alpine.ext3 2>/dev/null | grep -E '^3\.'
           ! debugfs -R "ls /usr/bin" release/alpine.ext3 2>/dev/null | grep -q qemu-arm-static
           test "$(debugfs -R 'cat /etc/shadow' release/alpine.ext3 2>/dev/null | grep '^alpine:' | cut -d: -f2)" = '!'
-          unzip -l release/alpine.zip
+          unzip -t release/alpine.zip
+          for file in alpine.ext3 alpine.sh alpine.conf install.sh uninstall.sh diag.sh \
+                      alpine-kindle-docs/README.md alpine-kindle-docs/LICENSE \
+                      alpine-kindle-docs/COMPATIBILITY.md \
+                      alpine-kindle-docs/KNOWN-ISSUES.md \
+                      alpine-kindle-docs/TROUBLESHOOTING.md; do
+            unzip -Z1 release/alpine.zip | grep -Fx "$file"
+          done
 
       - uses: actions/upload-artifact@v4
         with:

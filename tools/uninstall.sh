@@ -5,7 +5,7 @@
 # Run on the KINDLE, from kterm or SSH:
 #
 #     sh /mnt/us/uninstall.sh                 # remove everything (asks first)
-#     sh /mnt/us/uninstall.sh --keep-image    # keep alpine.ext3 (skips a 2.5 GB re-copy)
+#     sh /mnt/us/uninstall.sh --keep-image    # keep alpine.ext3 + swap.img
 #     sh /mnt/us/uninstall.sh --yes           # no prompts
 #     sh /mnt/us/uninstall.sh --dry-run       # show what would be removed
 #
@@ -20,7 +20,7 @@
 # the root filesystem read-only, and clears /tmp.
 
 US=/mnt/us
-SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+SELF_DIR="${ALPINE_UNINSTALL_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 [ -d "$SELF_DIR" ] || SELF_DIR="$US"
 
 KEEP_IMAGE=no
@@ -63,6 +63,29 @@ for arg in "$@"; do
   esac
 done
 
+# BusyBox sh reads a script incrementally. Removing /mnt/us/uninstall.sh while
+# that same file is still being interpreted makes the shell lose the unread
+# tail and report a bogus "unterminated quoted string". For a real uninstall,
+# re-exec an ephemeral copy first so the installed copy can safely remove
+# itself. A dry run does not remove the script and therefore needs no copy.
+if [ "$DRY_RUN" != yes ] && [ "${ALPINE_UNINSTALL_RELOCATED:-no}" != yes ] \
+   && [ "$SELF_DIR" = "$US" ]; then
+  TMP_UNINSTALL="$(mktemp /tmp/alpine-uninstall.XXXXXX)" \
+    || { echo "could not create temporary uninstaller" >&2; exit 1; }
+  cp "$0" "$TMP_UNINSTALL" || exit 1
+  ALPINE_UNINSTALL_RELOCATED=yes
+  ALPINE_UNINSTALL_DIR="$SELF_DIR"
+  export ALPINE_UNINSTALL_RELOCATED ALPINE_UNINSTALL_DIR
+  exec sh "$TMP_UNINSTALL" "$@"
+fi
+
+ROOT_MADE_RW=no
+cleanup_uninstaller() {
+  [ "$ROOT_MADE_RW" = yes ] && mntroot ro >/dev/null 2>&1
+  [ "${ALPINE_UNINSTALL_RELOCATED:-no}" = yes ] && rm -f "$0"
+}
+trap cleanup_uninstaller EXIT HUP INT TERM
+
 say()  { printf '%s\n' "$*"; }
 run()  {
   if [ "$DRY_RUN" = yes ]; then
@@ -70,6 +93,14 @@ run()  {
   else
     "$@"
   fi
+}
+
+MNT_PARENT="$(readlink -f /tmp 2>/dev/null)"
+[ -n "$MNT_PARENT" ] || MNT_PARENT=/tmp
+MNT_REAL="$MNT_PARENT/alpine"
+rootfs_is_mounted() {
+  awk -v logical=/tmp/alpine -v real="$MNT_REAL" \
+    '$2 == logical || $2 == real { found=1 } END { exit !found }' /proc/mounts
 }
 
 say "Alpine Linux for Kindle - uninstaller"
@@ -81,7 +112,7 @@ say
 say "1. Stop any running session"
 ########################################################################
 
-if [ -d /tmp/alpine ]; then
+if rootfs_is_mounted; then
   # Use the launcher's own cleanup when available: it unmounts in the right
   # order, disables swap and detaches the loop devices.
   if [ -x "$SELF_DIR/alpine.sh" ] || [ -f "$SELF_DIR/alpine.sh" ]; then
@@ -128,9 +159,16 @@ say "2. Upstart job (system partition)"
 if [ -f /etc/upstart/alpine.conf ]; then
   say "  found /etc/upstart/alpine.conf - this is a change to the system partition"
   if confirms "Remove it?" y; then
-    run mntroot rw
-    run rm -f /etc/upstart/alpine.conf
-    run mntroot r
+    run mntroot rw || { say "  ERROR: could not remount the Kindle root filesystem read-write"; exit 1; }
+    [ "$DRY_RUN" = yes ] || ROOT_MADE_RW=yes
+    if ! run rm -f /etc/upstart/alpine.conf; then
+      run mntroot ro
+      ROOT_MADE_RW=no
+      say "  ERROR: could not remove /etc/upstart/alpine.conf"
+      exit 1
+    fi
+    run mntroot ro || { say "  ERROR: root filesystem is still writeable; run 'mntroot ro'"; exit 1; }
+    ROOT_MADE_RW=no
     say "  removed"
   else
     say "  kept"
@@ -151,13 +189,18 @@ say
 say "3. Files on the userstore ($US)"
 ########################################################################
 
-FILES="alpine.sh alpine.conf alpine-run.log alpine.log diag.sh install.sh
+FILES="alpine.sh alpine.conf alpine-run.log alpine.log diag.sh install.sh uninstall.sh alpine.zip
        startgui.out startgui2.out"
 for f in $FILES; do
   [ -e "$US/$f" ] || continue
   say "  removing $f"
   run rm -f "$US/$f"
 done
+
+if [ -d "$US/alpine-kindle-docs" ]; then
+  say "  removing alpine-kindle-docs"
+  run rm -rf "$US/alpine-kindle-docs"
+fi
 
 # Debug logs from development sessions, if any are present.
 for f in "$US"/mate*.log; do
@@ -186,8 +229,8 @@ say
 say "4. Verify"
 ########################################################################
 
-if mount | grep -q "on /tmp/alpine "; then
-  say "  WARNING: /tmp/alpine is still mounted - reboot to clear it"
+if rootfs_is_mounted; then
+  say "  WARNING: Alpine is still mounted at $MNT_REAL - reboot to clear it"
 else
   say "  no Alpine mounts"
 fi

@@ -7,7 +7,7 @@ claim is a community report rather than something I could execute, it says so.
 
 | Device | SoC / kernel | Userspace | Status |
 |---|---|---|---|
-| **PW5** (Paperwhite 11th gen, 2021) | MediaTek, **4.9.77-lab126** (reported on FW 5.19.2) | armv7l / armhf | **primary target**; package set verified, not yet booted |
+| **PW5** (Paperwhite 11th gen, 2021) | MediaTek, **4.9.77-lab126** (FW 5.19.2) | armv7l / armhf | **primary target**; shell and fullscreen MATE verified on hardware |
 | PW5 SE | same family | armhf | expected identical |
 | Kindle 10th gen (2019) | i.MX7 / 6SoloLite, kernel 4.1.15 | armv7l, no NEON | community chroot project tested this config on FW 5.18.1 |
 | PW3 (7th gen, 2015) | i.MX6SL, 3.0.x-era kernel, 512 MB | armv7l | upstream project's target; smaller image recommended |
@@ -99,8 +99,10 @@ window manager, and upstart's `lab126_gui` job.
   `lab126_gui_setup`, `lab126_gui_monitor`, `xinit`, `display_ready`
   ([upstart-diagram](https://github.com/KindleModding/kindlemodding.github.io/blob/main/static/kindle-hacking/upstart-diagram.html)).
 
-Not verified off-device: whether `Xephyr` can still attach to `:0` *after* `lab126_gui` is
-stopped on 5.19.x. This is the highest-risk assumption in the project.
+Verified on the PW5 test device: Xephyr attaches to `:0` after `lab126_gui` is stopped,
+MATE renders fullscreen, and `stop alpine` cleanly removes the mounts and restores the UI.
+A surgical UI restart triggered Amazon's `KPPMainAppV2` crash collector once before the Home
+screen recovered, so the upstart route remains experimental; the manual launcher is safer.
 
 ## Package audit — 2019 list vs Alpine v3.24 (`armv7`)
 

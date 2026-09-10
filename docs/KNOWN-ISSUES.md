@@ -5,17 +5,19 @@ firmware 5.19.2, kernel 4.9.77-lab126, Véra jailbreak.
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
-| 1 | `stop alpine` leaves the rootfs mounted and the Kindle UI down | **high** | open — `alpine.conf` is experimental |
+| 1 | `stop alpine` leaves the rootfs mounted and the Kindle UI down | **high** | fixed in tree — verified twice on PW5 |
 | 2 | Landscape (`O:LR`) renders with tearing | medium | open — portrait only |
 | 3 | On-screen keyboard (`onboard`) not wired up to MATE | medium | open |
-| 4 | Chromium is slow / battery-heavy at 512 MB | low | expected |
-| 5 | Chromium `--touch-devices` hint may not resolve | low | untested |
+| 4 | Chromium `--touch-devices` hint may not resolve | low | untested |
+| 5 | No prebuilt GitHub Release | medium | open — users must build locally |
+| 6 | Memory and swap strategy needs tuning | medium | open — current disk swap works |
+| 7 | Uninstaller does not unload project-loaded kernel modules | low | latent — none are loaded today |
 
 ---
 
-## 1. `stop alpine` fails to tear down cleanly
+## 1. `stop alpine` teardown — fixed, UI restart still experimental
 
-**Symptom.** After `initctl stop alpine`:
+**Original symptom.** Before the fix, `initctl stop alpine` produced:
 
 ```
 initctl: Job failed while stopping
@@ -37,7 +39,7 @@ initctl start lab126_gui         # brings the reader UI back
 A reboot also fixes it. A reboot is safe — nothing is left half-written; the userstore is
 consistent.
 
-**What is already fixed** (three real bugs found and corrected):
+**Root causes and fixes.** The original three fixes were necessary but incomplete:
 
 1. Bare `stop lab126_gui` in a job script failed with `Unknown instance:` — upstart jobs run
    with a minimal `PATH` that does not include `/sbin`. Now uses an absolute
@@ -47,20 +49,35 @@ consistent.
 3. The `post-stop` had an unbounded `while mount | grep …; do sleep 3; done` retry loop.
    upstart kills a section that overruns, so the loop guaranteed failure. Now bounded, with
    explicit warnings instead of spinning.
+4. Upstart executes job sections with error-exit behavior. The first rootfs `umount` normally
+   returned busy while MATE was still exiting, which aborted `post-stop` before its retry and
+   before the UI restart. Expected failures are now handled explicitly.
+5. `/tmp` resolves to `/var/tmp`, so matching only `on /tmp/alpine` falsely reported that a
+   live `/var/tmp/alpine` mount was gone. Mount checks now compare both logical and resolved
+   paths through `/proc/mounts`.
+6. A chroot-scoped `dbus-launch` survived `mate-session` and held the `/proc` bind. `post-stop`
+   now kills only processes whose resolved root is inside the Alpine mount, retries each bind
+   mount separately for at most ten seconds, and never detaches the rootfs loop while mounted.
+7. The job's swap setup used only `losetup -f`, which names a nonexistent flat node on this
+   firmware. It now uses the launcher's complete sysfs plus `/dev/loop/<N>` detection; hardware
+   verification showed `/dev/loop/12` providing the intended 512 MB swap and disappearing on
+   stop.
 
-**Still unexplained.** The `post-stop` section still terminates partway, immediately after
-logging `Unmounting Alpine rootfs`. `lab126_gui` is therefore never restarted by the job.
-Note `/bin/sh` on this firmware is **busybox** (which matters: `sleep 0.2` is rejected —
-integer only), and `/tmp` is a **symlink to `/var/tmp`**, so the mount actually appears at
-`/var/tmp/alpine`.
+The clean-room audit also found that this firmware accepts `mntroot ro`, not `mntroot r`.
+Installer and uninstaller now use the verified spelling, check failures, and leave `/` read-only.
 
-Suggested next step: run the `post-stop` body under `sh -x` with each line timestamped to a
-log file, to find the exact line where it dies. Alternatively sidestep upstart entirely — a
-plain wrapper script that does stop/start itself, orchestrated from the shell rather than
-from an upstart job, would avoid whatever upstart is doing to the section.
+**Hardware verification.** Multiple consecutive stops on the PW5 completed with `stop_exit=0`,
+`alpine stop/waiting`, `lab126_gui start/running`, no Alpine mounts, and no Alpine-backed
+loops. The non-instrumented public job was used for the final runs, including one with the
+project swap active.
 
-**Meanwhile:** `contrib/alpine.conf` is shipped for reference but **not recommended**, and it
-has no `start on` line so it can never auto-start. The supported path is:
+**Remaining caveat.** After the final stop, Amazon's UI displayed its `KPPMainAppV2` core-dump
+collector once, then recovered to the normal Home screen after about 30 seconds. The Alpine
+state was already clean and the stock root filesystem was read-only. A full reboot remains
+more reliable than surgically rebuilding the Amazon UI service ordering.
+
+`contrib/alpine.conf` therefore remains opt-in and has no `start on` line, so it can never
+auto-start. The safest supported path remains:
 
 ```sh
 sh /mnt/us/alpine.sh              # shell
@@ -113,17 +130,40 @@ gsettings set org.mate.screensaver embedded-keyboard-command 'onboard -e'
 
 ---
 
-## 4/5. Chromium
+## 4. Chromium touch scrolling
 
-The device has **474 MB usable RAM** (a 512 MB device). MATE + Chromium is a tight fit; expect
-slow page loads and heavy swap use. Chromium launches with `--no-sandbox` because Kindle
-kernels lack user namespaces.
-
-`netsurf` is installed as the light fallback and is the better default for e-ink.
+Chromium launches with `--no-sandbox` because Kindle kernels lack user namespaces.
 
 The `--touch-devices=${mouseid}` flag is resolved at launch time from
 `xinput list --id-only 'Xephyr virtual mouse'`. If the virtual pointer is named differently,
 that flag silently does nothing and touch scrolling in Chromium won't work. Unverified.
+
+## 5. No prebuilt GitHub Release
+
+CI builds and validates `alpine.zip`, but it currently uploads the zip only as a short-lived
+workflow artifact. There is no tagged GitHub Release asset yet, so every user must install
+the host build dependencies and build the image locally. Track this in
+[GitHub issue #5](https://github.com/adiglase/alpine-kindle/issues/5).
+
+## 6. Memory and swap strategy
+
+The device has **474 MB usable RAM** (a 512 MB device), plus the Kindle's existing 128 MB
+`/dev/zram0`. MATE with the Kindle UI still running is too tight for comfortable use. The
+experimental upstart path stops the UI and has been measured at about 451 MB used with about
+57 MB of the project's 512 MB disk swap in use.
+
+Chromium is slow and battery-heavy in this budget; `netsurf` is the better default for e-ink.
+A second zram device may outperform disk swap and could shrink the release, but it must be
+benchmarked without altering the Kindle's existing `/dev/zram0`. Track this in
+[GitHub issue #6](https://github.com/adiglase/alpine-kindle/issues/6).
+
+## 7. Kernel modules are not unloaded
+
+The project does not currently load any kernel modules, so this has no runtime effect today.
+If zram or a future feature loads modules, the launcher must record exactly which modules it
+loaded and the uninstaller must remove only those, in reverse dependency order. It must never
+guess or unload modules already used by the stock system. Track this in
+[GitHub issue #7](https://github.com/adiglase/alpine-kindle/issues/7).
 
 ---
 

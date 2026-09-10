@@ -18,6 +18,16 @@ MNT=/tmp/alpine
 LOG="$DIR/alpine-run.log"
 SWAPDEV=""
 
+# /tmp is a symlink to /var/tmp on current firmware. mount(8) reports the
+# resolved path, so string-matching only "/tmp/alpine" misses a live mount.
+MNT_PARENT="$(readlink -f "$(dirname "$MNT")" 2>/dev/null)"
+[ -n "$MNT_PARENT" ] || MNT_PARENT="$(dirname "$MNT")"
+MNT_REAL="$MNT_PARENT/$(basename "$MNT")"
+rootfs_is_mounted() {
+  awk -v logical="$MNT" -v real="$MNT_REAL" \
+    '$2 == logical || $2 == real { found=1 } END { exit !found }' /proc/mounts
+}
+
 # ------------------------------------------------------------- logging ------
 : > "$LOG" 2>/dev/null
 say() {
@@ -81,9 +91,13 @@ detach_loop_for() {
     case "$(cat "$BF" 2>/dev/null)" in
       *"$BASE")
         N="${b##*/}"
-        if [ -b "/dev/$N" ]; then losetup -d "/dev/$N" 2>/dev/null;
-        else losetup -d "/dev/loop/${N#loop}" 2>/dev/null; fi
-        say "Detached loop device ${N#loop}"
+        if [ -b "/dev/$N" ]; then DEV="/dev/$N"
+        else DEV="/dev/loop/${N#loop}"; fi
+        if losetup -d "$DEV" 2>/dev/null; then
+          say "Detached loop device ${N#loop}"
+        else
+          say "WARNING: could not detach loop device ${N#loop}"
+        fi
         ;;
     esac
   done
@@ -156,15 +170,20 @@ unmount_rootfs() {
   umount "$MNT/dev" 2>/dev/null
   sync
   umount "$MNT" 2>/dev/null
-  # The loop device is released asynchronously; retry a few times.
+  # MATE processes can take a moment to release the rootfs. Retry for at most
+  # ten seconds, checking both the logical and resolved mountpoint names.
   i=0
-  while mount | grep -q "on $MNT "; do
+  while rootfs_is_mounted; do
     i=$((i + 1))
     [ "$i" -gt 10 ] && { say "WARNING: $MNT still mounted - reboot to clean up."; break; }
-    say "Still busy, retrying in ${i}s..."
-    sleep "$i"
+    say "Still busy, retrying (${i}/10)..."
+    sleep 1
     umount "$MNT" 2>/dev/null
   done
+  if rootfs_is_mounted; then
+    say "ERROR: Alpine rootfs is still mounted at $MNT_REAL."
+    return 1
+  fi
   # Free the loop devices too - firmware does not always do it for us.
   detach_loop_for "$DIR/alpine.ext3"
   detach_loop_for "$DIR/swap.img"
@@ -178,10 +197,10 @@ unmount_rootfs() {
 if [ "$1" = "cleanup" ]; then
   say "Cleaning up any leftover Alpine mounts..."
   unmount_rootfs
-  exit 0
+  exit $?
 fi
 
-if mount | grep -q "on $MNT "; then
+if rootfs_is_mounted; then
   say "Rootfs already mounted - entering the existing session."
   ALREADY=yes
 else
@@ -200,7 +219,7 @@ fi
 if [ "$ALREADY" = "yes" ]; then
   say "Another Alpine session is still using $MNT - leaving it mounted."
 else
-  unmount_rootfs
+  unmount_rootfs || exit 1
 fi
 
 say "Log written to $LOG"
