@@ -7,7 +7,7 @@ Hardware-related status was established on a real Kindle Paperwhite 5 (11th gen)
 |---|---|---|---|
 | 1 | `stop alpine` leaves the rootfs mounted and the Kindle UI down | **high** | fixed in tree — verified twice on PW5 |
 | 2 | Landscape (`O:LR`) renders with tearing | medium | open — portrait only |
-| 3 | On-screen keyboard (`onboard`) not wired up to MATE | medium | open |
+| 3 | On-screen keyboard (`onboard`) not wired up to MATE | medium | fixed in tree — verified on PW5 |
 | 4 | Chromium `--touch-devices` hint may not resolve | low | untested |
 | 5 | No prebuilt GitHub Release | medium | fixed in tree — `v*` tags publish a verified zip |
 | 6 | Memory and swap strategy needs tuning | medium | open — current disk swap works |
@@ -111,22 +111,20 @@ Until then `startgui.sh` hardcodes `O:U`.
 
 ---
 
-## 3. `onboard` is not started automatically
+## 3. On-screen keyboard — fixed
 
-`onboard` is installed in the image (and MATE's screensaver is configured not to lock, partly
-so a locked screen with no keyboard isn't possible), but nothing launches it, and MATE's
-accessibility keyboard integration is not configured. Launch manually inside the session:
+Onboard now starts hidden with the MATE session and automatically appears when an accessible
+text field receives focus. It uses the compact, high-contrast layout and docks to the bottom
+500 pixels of the 1236x1648 portrait display, shrinking the application work area while shown.
 
-```sh
-DISPLAY=:1 onboard -e &
-```
+MATE's screensaver XEmbed command is also configured (`onboard -e`). Screen locking remains
+disabled because the screensaver and Kindle's nested e-ink display path still need separate
+hardware validation; enabling a lock by default would make a regression difficult to recover
+from. The configured keyboard removes the previous prerequisite for that future testing.
 
-To wire it up properly:
-
-```sh
-gsettings set org.mate.screensaver embedded-keyboard-enabled true
-gsettings set org.mate.screensaver embedded-keyboard-command 'onboard -e'
-```
+Verified on a PW5 at 1236x1648: MATE autostarts Onboard, AT-SPI focus events show and hide it,
+and pointer input reaches its keys through Xephyr. Physical multi-touch gestures remain outside
+this issue's single-touch keyboard scope.
 
 ---
 

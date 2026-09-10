@@ -199,17 +199,64 @@ killall Xephyr
 EOF
 chmod +x "$MNT/startgui.sh"
 
-# Disable screen locking / blanking: a locked e-ink session with no working
-# unlock is a known footgun in this setup, and mate-screensaver fights Xephyr.
+# Disable screen locking / blanking: mate-screensaver still fights Xephyr on the
+# Kindle display path. Onboard's XEmbed command is configured nevertheless, so
+# lock testing cannot strand a touch-only user if locking is enabled manually.
 printf 'user-db:user\nsystem-db:local\n' > "$MNT/etc/dconf/profile/user"
 cat > "$MNT/etc/dconf/db/local.d/00-kindle" <<'EOF'
 [org/mate/screensaver]
 lock-enabled=false
 idle-activation-enabled=false
+embedded-keyboard-enabled=true
+embedded-keyboard-command='onboard -e'
 
 [org/mate/power-manager]
 sleep-display-ac=0
 sleep-display-battery=0
+
+# Onboard's focus detection uses AT-SPI. Enable accessibility for MATE and GTK
+# so the accessibility bus is activated when applications join the session.
+[org/mate/desktop/interface]
+accessibility=true
+
+[org/gnome/desktop/interface]
+toolkit-accessibility=true
+
+# Start hidden and appear when an accessible text widget receives focus. This
+# keeps the keyboard from consuming the small e-ink work area when it is idle.
+[org/onboard]
+layout='Compact'
+theme='HighContrast'
+system-theme-tracking-enabled=false
+show-status-icon=false
+start-minimized=true
+
+[org/onboard/auto-show]
+enabled=true
+tablet-mode-detection-enabled=false
+
+[org/onboard/window]
+docking-enabled=true
+docking-shrink-workarea=true
+docking-edge='bottom'
+
+[org/onboard/window/portrait]
+dock-height=500
+EOF
+
+# The packaged desktop file is an application launcher, not a session
+# autostart entry. Run one Onboard process for MATE; auto-show above controls
+# when its window is visible. AT-SPI is already started by the MATE session.
+mkdir -p "$MNT/etc/xdg/autostart"
+cat > "$MNT/etc/xdg/autostart/onboard.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=On-screen Keyboard
+Comment=Show Onboard when a text field receives focus
+Exec=onboard
+OnlyShowIn=MATE;
+X-MATE-Autostart-enabled=true
+NoDisplay=true
 EOF
 
 # Chromium launcher flags. --no-sandbox is required: Kindle kernels generally

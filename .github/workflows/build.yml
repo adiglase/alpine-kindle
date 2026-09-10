@@ -92,6 +92,12 @@ jobs:
           grep -E '^3\.24\.' <<<"$ALPINE_RELEASE"
           ! debugfs -R "ls /usr/bin" release/alpine.ext3 2>/dev/null | grep -q qemu-arm-static
           test "$(debugfs -R 'cat /etc/shadow' release/alpine.ext3 2>/dev/null | grep '^alpine:' | cut -d: -f2)" = '!'
+          debugfs -R 'cat /etc/dconf/db/local.d/00-kindle' release/alpine.ext3 2>/dev/null \
+            | grep -Fx "embedded-keyboard-command='onboard -e'"
+          debugfs -R 'cat /etc/dconf/db/local.d/00-kindle' release/alpine.ext3 2>/dev/null \
+            | grep -Fx 'toolkit-accessibility=true'
+          debugfs -R 'cat /etc/xdg/autostart/onboard.desktop' release/alpine.ext3 2>/dev/null \
+            | grep -Fx 'Exec=onboard'
           unzip -t release/alpine.zip
           for file in alpine.ext3 alpine.sh alpine.conf install.sh uninstall.sh diag.sh \
                       alpine-kindle-docs/README.md alpine-kindle-docs/LICENSE \
