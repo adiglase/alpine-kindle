@@ -105,12 +105,16 @@ and/or run the desktop with the Kindle UI stopped (`start alpine`).
 
 ## Touch input / on-screen keyboard
 
-`onboard` is installed in the image. If the keyboard doesn't appear when you tap a text field,
-launch it manually:
+`onboard` starts with MATE and should appear when you tap an accessible text field. If it does
+not, confirm the process is running and launch it manually if needed:
 
 ```sh
-DISPLAY=:1 onboard -e &
+pgrep -a onboard
+DISPLAY=:1 onboard &
 ```
+
+The `-e` option is reserved for MATE's embedded lock-screen keyboard and should not be used for
+the normal desktop keyboard.
 
 Chromium's `--touch-devices` hint is resolved at launch time from
 `xinput list --id-only 'Xephyr virtual mouse'`; if the virtual pointer has a different name on

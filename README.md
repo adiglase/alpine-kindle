@@ -27,7 +27,8 @@ This is a modernization of [schuhumi/alpine_kindle](https://github.com/schuhumi/
 | Fonts | `apk search ttf-` — matches 1 package today | explicit `font-dejavu font-liberation font-noto` |
 | Image | 2 GB | configurable, **2.5 GB** default for an 8 GB device |
 | Swap | none | optional **block swap** image (a swap *file* can't live on vfat) |
-| Screen locking | unaddressed | lock/blanking disabled via dconf (locking e-ink is a footgun) |
+| Touch keyboard | configured | Onboard auto-shows on text focus and docks at the bottom |
+| Screen locking | limited | lock/blanking disabled; Onboard unlock integration is configured for manual testing |
 | Default account | `alpine` / `alpine` | **no password baked in** — `passwd alpine` on first run |
 
 ## Quick start
