@@ -57,7 +57,7 @@ done
 [ -f "$SELF_DIR/swap.img" ] && ok "swap.img present (optional)" \
                           || warn "no swap.img - the desktop will be tight at 512 MB"
 [ -f "$SELF_DIR/alpine.conf" ] && ok "alpine.conf present (experimental upstart job)" \
-                              || warn "no alpine.conf - that's fine, see docs/KNOWN-ISSUES.md"
+                              || warn "no alpine.conf - that's fine, see alpine-kindle-docs/KNOWN-ISSUES.md"
 
 # A 2.5 GiB image must actually be that size; a truncated copy is the most likely
 # failure after a USB/MTP transfer.
@@ -66,10 +66,18 @@ SZ="$(ls -l "$SELF_DIR/alpine.ext3" | awk '{print $5}')"
 
 echo
 echo "3. Make sure nothing is mounted"
-if mount | grep -q "on /tmp/alpine "; then
+MNT_PARENT="$(readlink -f /tmp 2>/dev/null)"
+[ -n "$MNT_PARENT" ] || MNT_PARENT=/tmp
+MNT_REAL="$MNT_PARENT/alpine"
+rootfs_is_mounted() {
+  awk -v logical=/tmp/alpine -v real="$MNT_REAL" \
+    '$2 == logical || $2 == real { found=1 } END { exit !found }' /proc/mounts
+}
+if rootfs_is_mounted; then
   warn "the Alpine rootfs is already mounted; cleaning up first"
-  sh "$SELF_DIR/alpine.sh" cleanup
+  sh "$SELF_DIR/alpine.sh" cleanup || die "the Alpine rootfs is still mounted; reboot before installing"
 fi
+rootfs_is_mounted && die "the Alpine rootfs is still mounted; reboot before installing"
 ok "no stale mounts"
 
 FREE="$(df -k "$US" 2>/dev/null | awk 'NR==2{print $4}')"
@@ -84,12 +92,18 @@ read -r REPLY
 case "$REPLY" in
   [yY]*)
     [ -f "$SELF_DIR/alpine.conf" ] || die "alpine.conf not found next to this script"
-    mntroot rw >/dev/null 2>&1
-    cp "$SELF_DIR/alpine.conf" /etc/upstart/alpine.conf
-    mntroot r >/dev/null 2>&1
+    mntroot rw >/dev/null 2>&1 || die "could not remount the Kindle root filesystem read-write"
+    trap 'mntroot ro >/dev/null 2>&1' EXIT HUP INT TERM
+    if ! cp "$SELF_DIR/alpine.conf" /etc/upstart/alpine.conf; then
+      mntroot ro >/dev/null 2>&1
+      die "could not install /etc/upstart/alpine.conf"
+    fi
+    mntroot ro >/dev/null 2>&1 \
+      || die "job installed, but the Kindle root filesystem could not be remounted read-only"
+    trap - EXIT HUP INT TERM
     ok "installed /etc/upstart/alpine.conf"
-    warn "EXPERIMENTAL: 'stop alpine' is known to fail and can leave the screen blank."
-    warn "Recovery:  sh $US/alpine.sh cleanup ; initctl start lab126_gui"
+    warn "EXPERIMENTAL: restarting the Kindle UI can trigger its crash-recovery screen."
+    warn "If it does not recover: sh $US/alpine.sh cleanup ; reboot"
     ;;
   *)
     ok "skipped - using the manual launcher"
@@ -111,7 +125,10 @@ Done. Two ways to run it:
   Desktop with the Kindle UI stopped first (frees ~150 MB, needs the upstart job):
       initctl start alpine
 
-Read docs/KNOWN-ISSUES.md before using 'stop alpine'.
+Read $US/alpine-kindle-docs/KNOWN-ISSUES.md before using 'stop alpine'.
+
+If you copied alpine.zip to the Kindle, you can now delete it to recover space:
+    rm -f $US/alpine.zip
 
 Quick device sanity check after the first run:  cat $US/alpine-run.log
 EOF

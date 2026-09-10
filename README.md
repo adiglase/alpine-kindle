@@ -32,6 +32,10 @@ This is a modernization of [schuhumi/alpine_kindle](https://github.com/schuhumi/
 
 ## Quick start
 
+There is not yet a prebuilt GitHub Release. Until
+[#5](https://github.com/adiglase/alpine-kindle/issues/5) is complete, build the zip on a
+Linux host. The Kindle does not need QEMU or any build tools.
+
 ### On the Kindle — check compatibility first
 
 ```sh
@@ -43,10 +47,13 @@ df -h /mnt/us   # image + swap must fit, and stay under 4 GB per file (FAT32)
 ### On the build host
 
 ```sh
-sudo apt install qemu-user-static
-git clone <this repo> && cd alpine-kindle
+sudo apt install curl e2fsprogs git qemu-user-static unzip util-linux zip
+git clone https://github.com/adiglase/alpine-kindle.git
+cd alpine-kindle
 sudo IMAGESIZE_MB=2560 SWAP_MB=512 ./build-image.sh
 ```
+
+The build needs about 8 GB of free disk space and produces `release/alpine.zip`.
 
 Options (environment variables):
 
@@ -57,26 +64,44 @@ sudo IMAGESIZE_MB=4095 ./build-image.sh    # hard ceiling: /mnt/us is FAT32, so 
 sudo ALPINE_BRANCH=v3.23 ./build-image.sh  # pin a different stable branch
 ```
 
-Output: `release/alpine.zip`.
+Copy the zip to the Kindle while Alpine is **not mounted**. Use MTP, or SSH if your
+jailbreak provides it:
+
+```sh
+scp release/alpine.zip root@KINDLE_IP:/mnt/us/
+```
+
+If SSH uses a non-default port, `scp` spells the port option with an uppercase `-P`, for
+example `scp -P 2222 release/alpine.zip root@KINDLE_IP:/mnt/us/`.
 
 ### On the Kindle
 
 ```sh
 cd /mnt/us
 unzip alpine.zip
+sh install.sh                             # accept the default: do not install the experimental job
+rm alpine.zip                             # recover about 500 MB after extraction
 sh alpine.sh                              # a shell inside Alpine (you land in it as root)
 passwd alpine                             # do this first - no password is baked into the image
 exit
-sh alpine.sh startgui                     # + MATE desktop (Xephyr on the Kindle's X server)
+sh alpine.sh startgui                     # MATE desktop (Xephyr on the Kindle's X server)
 ```
 
-Or install the upstart job so the Kindle UI is stopped first (frees a lot of RAM):
+`startgui` leaves the Kindle UI running. It is the safest first test, but with only 512 MB
+RAM it is tight and may swap heavily.
+
+There is also an experimental upstart job that stops the Kindle UI first and frees about
+150 MB. Its teardown now unmounts cleanly, but restarting Amazon's UI can briefly trigger
+its own crash-recovery screen. Do not install it on a first run. If you deliberately want
+to test it, read
+[`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md#1-stop-alpine-fails-to-tear-down-cleanly),
+then run `sh install.sh` again and answer `y`.
+
+Recovery if `stop alpine` fails:
 
 ```sh
-mntroot rw
-cp /mnt/us/alpine.conf /etc/upstart/
-mntroot r
-start alpine
+sh /mnt/us/alpine.sh cleanup
+initctl start lab126_gui
 ```
 
 ## How it works
@@ -93,7 +118,7 @@ chroot /tmp/alpine /bin/sh
 
 The desktop runs as a **nested X server**: `Xephyr :1` displays inside a window on the
 Kindle's own X server (`:0`), fullscreened by the Kindle's `awesome` window manager via the
-lab126 window-title hint `L:D_N:application_ID:xephyr`. See
+lab126 window-title hint `L:A_N:application_ID:xephyr_WS:true_O:U`. See
 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the evidence that this stack is still
 present on current firmware.
 
@@ -103,12 +128,13 @@ present on current firmware.
 build-image.sh        build alpine.ext3 + swap.img, pack the release (run as root on the host)
 create-release.sh     packs release/alpine.zip (called by build-image.sh)
 alpine.sh             Kindle side: mount, swap, chroot, clean unmount, `cleanup` recovery mode
-alpine.conf           upstart job: stop lab126_gui -> restart pillow -> desktop -> restore the UI
+contrib/alpine.conf   experimental upstart job: stop UI -> desktop -> restore the UI
 docs/COMPATIBILITY.md what was verified, on which firmware, and why the choices were made
 docs/TROUBLESHOOTING.md  what to do when it doesn't come up
 docs/KNOWN-ISSUES.md     open problems, with the evidence gathered so far
-docs/DEVELOPMENT.md      test device, SSH access, and the device quirks that bite
 tools/diag.sh         on-Kindle loop/swap diagnostics (self-cleaning)
+tools/install.sh      validates an extracted release and optionally installs the upstart job
+tools/uninstall.sh    removes Alpine runtime state, installed files, and userstore files
 tools/screenshot.sh   dump the panel over SSH, so you can see the screen from your PC
 ```
 
@@ -127,7 +153,7 @@ The Kindle and MATE cannot both have the RAM, and the display path has a trap:
 ## Gotchas
 
 - **Never connect USB while Alpine is mounted.** On 11th gen you get MTP (file-level) instead of
-  raw mass storage, so it's less catastrophic than it was on a PW3 — but the rule stands.
+  raw mass storage, but unmount Alpine before any USB transfer.
 - **4 GB ceiling** — `/mnt/us` is FAT32. Keep `IMAGESIZE_MB` below 4096.
 - **Swap is a block image**, not a swap file: swap files need `bmap`, and vfat has none.
 - **Chromium runs with `--no-sandbox`** because Kindle kernels lack user namespaces. No default
@@ -136,13 +162,23 @@ The Kindle and MATE cannot both have the RAM, and the display path has a trap:
 - Don't use "Toggle USBNet" on newer firmware (it can trap the UI). Use USBNetLite.
 - See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) when something hangs.
 
+## Uninstall
+
+Preview every change, then uninstall while keeping the large image for a quick reinstall:
+
+```sh
+sh /mnt/us/uninstall.sh --dry-run --keep-image
+sh /mnt/us/uninstall.sh --keep-image
+```
+
+Omit `--keep-image` to remove the image and swap too. A reboot afterwards is recommended.
+The jailbreak, KOReader, books, and Kindle settings are not touched.
+
 ## Roadmap
 
-- [ ] Confirm end-to-end on real hardware (PW5, 5.19.2)
-- [ ] `aarch64` variant if any Kindle reports `uname -m` = `aarch64`
-- [ ] Verify/repair the `--touch-devices` hint for modern Chromium
-- [ ] Optional: XFCE / openbox profile for 512 MB devices
-- [ ] CI: build the image on every push (it's just `apk` + `tar`; no hardware needed)
+Open work is tracked in the repository's [GitHub issues](https://github.com/adiglase/alpine-kindle/issues).
+The teardown fix for [#1](https://github.com/adiglase/alpine-kindle/issues/1) is verified in
+this tree; the manual shell and `startgui` paths also work on the PW5 test device.
 
 ## License & credits
 

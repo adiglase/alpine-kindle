@@ -24,7 +24,7 @@ To remove the upstart job entirely:
 ```sh
 mntroot rw
 rm /etc/upstart/alpine.conf
-mntroot r
+mntroot ro
 ```
 
 ## `sh alpine.sh` fails to mount
