@@ -39,20 +39,23 @@ jobs:
       - name: Verify the Alpine package set still resolves (armv7)
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tr/lib/apk/db /tmp/tr/etc/apk
-          : > /tmp/tr/lib/apk/db/installed
-          VER=$(curl -fsSL https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/x86_64/APKINDEX.tar.gz \
-                | tar -xzO APKINDEX 2>/dev/null | awk -F: '/^P:apk-tools-static$/{p=1} p&&/^V:/{print $2; exit}')
+          REPO=https://dl-cdn.alpinelinux.org/alpine/v3.24
+          mkdir -p /tmp/apkindex
+          curl -fsSL -o /tmp/APKINDEX.tar.gz "$REPO/main/x86_64/APKINDEX.tar.gz"
+          tar -xzf /tmp/APKINDEX.tar.gz -C /tmp/apkindex APKINDEX
+          VER=$(awk -F: '/^P:apk-tools-static$/{p=1} p&&/^V:/{print $2; exit}' /tmp/apkindex/APKINDEX)
+          test -n "$VER"
           curl -fsSL -o /tmp/apk.apk \
-            "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/x86_64/apk-tools-static-${VER}.apk"
+            "$REPO/main/x86_64/apk-tools-static-${VER}.apk"
           tar -xzf /tmp/apk.apk -C /tmp
           # This is the check that matters: if a package below disappears upstream,
           # this step fails with "unable to select packages".
-          /tmp/sbin/apk.static --usermode --arch armv7 --root /tmp/tr \
-            --initdb -U --allow-untrusted --simulate --no-cache \
-            -X https://dl-cdn.alpinelinux.org/alpine/latest-stable/main \
-            -X https://dl-cdn.alpinelinux.org/alpine/latest-stable/community \
-            add alpine-base xorg-server-xephyr xwininfo xdpyinfo xauth xdotool xinput xset xterm \
+          /tmp/sbin/apk.static --arch armv7 \
+            -U --allow-untrusted --simulate --no-cache \
+            -X "$REPO/main" \
+            -X "$REPO/community" \
+            fetch --recursive \
+                alpine-base xorg-server-xephyr xwininfo xdpyinfo xauth xdotool xinput xset xterm \
                 dbus dbus-x11 mate-desktop-environment mate-themes mate-icon-theme \
                 onboard netsurf sudo bash nano git curl unzip desktop-file-utils \
                 font-dejavu font-liberation font-noto chromium
