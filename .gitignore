@@ -1,0 +1,16 @@
+# build artifacts
+/release/
+/cache/
+/mnt/
+
+# built images / packages
+*.ext3
+*.img
+*.zip
+
+# editor / OS noise
+.DS_Store
+*.swp
+
+# Local development notes (private device details)
+docs/DEVELOPMENT.md
