@@ -32,9 +32,9 @@ This is a modernization of [schuhumi/alpine_kindle](https://github.com/schuhumi/
 
 ## Quick start
 
-There is not yet a prebuilt GitHub Release. Until
-[#5](https://github.com/adiglase/alpine-kindle/issues/5) is complete, build the zip on a
-Linux host. The Kindle does not need QEMU or any build tools.
+Download the prebuilt image on a computer, verify it there, and then copy it to the Kindle.
+The Kindle does not need QEMU or any build tools. Avoid downloading the large archive over
+the Kindle's Wi-Fi.
 
 ### On the Kindle — check compatibility first
 
@@ -44,16 +44,43 @@ uname -r        # e.g. 4.9.77-lab126
 df -h /mnt/us   # image + swap must fit, and stay under 4 GB per file (FAT32)
 ```
 
-### On the build host
+### On a computer — download and verify
+
+```sh
+curl -fLO https://github.com/adiglase/alpine-kindle/releases/latest/download/alpine.zip
+curl -fLO https://github.com/adiglase/alpine-kindle/releases/latest/download/alpine.zip.sha256
+sha256sum --check alpine.zip.sha256
+```
+
+The checksum command must report `alpine.zip: OK`. You can instead download both files from
+the [GitHub Releases page](https://github.com/adiglase/alpine-kindle/releases); use assets
+from the same release. Each release also has a human-readable `BUILD-INFO.txt` recording the
+source commit, exact Alpine point release, image size, and build options.
+
+Copy the zip while Alpine is **not mounted**. Use MTP, or SSH if your jailbreak provides it:
+
+```sh
+scp alpine.zip root@KINDLE_IP:/mnt/us/
+```
+
+If SSH uses a non-default port, `scp` spells the port option with an uppercase `-P`, for
+example `scp -P 2222 alpine.zip root@KINDLE_IP:/mnt/us/`.
+
+### Custom local builds
+
+Build locally when you want a different image size, swap size, Alpine stable branch, or
+browser selection. On a Debian/Ubuntu Linux host:
 
 ```sh
 sudo apt install curl e2fsprogs git qemu-user-static unzip util-linux zip
 git clone https://github.com/adiglase/alpine-kindle.git
 cd alpine-kindle
 sudo IMAGESIZE_MB=2560 SWAP_MB=512 ./build-image.sh
+sha256sum --check release/alpine.zip.sha256
 ```
 
-The build needs about 8 GB of free disk space and produces `release/alpine.zip`.
+The build needs about 8 GB of free disk space and produces `release/alpine.zip` plus its
+checksum and build metadata.
 
 Options (environment variables):
 
@@ -64,15 +91,11 @@ sudo IMAGESIZE_MB=4095 ./build-image.sh    # hard ceiling: /mnt/us is FAT32, so 
 sudo ALPINE_BRANCH=v3.23 ./build-image.sh  # pin a different stable branch
 ```
 
-Copy the zip to the Kindle while Alpine is **not mounted**. Use MTP, or SSH if your
-jailbreak provides it:
+For a local build, copy the resulting archive to the Kindle while Alpine is not mounted:
 
 ```sh
 scp release/alpine.zip root@KINDLE_IP:/mnt/us/
 ```
-
-If SSH uses a non-default port, `scp` spells the port option with an uppercase `-P`, for
-example `scp -P 2222 release/alpine.zip root@KINDLE_IP:/mnt/us/`.
 
 ### On the Kindle
 
@@ -126,7 +149,7 @@ present on current firmware.
 
 ```
 build-image.sh        build alpine.ext3 + swap.img, pack the release (run as root on the host)
-create-release.sh     packs release/alpine.zip (called by build-image.sh)
+create-release.sh     packs the zip, checksum, and build metadata (called by build-image.sh)
 alpine.sh             Kindle side: mount, swap, chroot, clean unmount, `cleanup` recovery mode
 contrib/alpine.conf   experimental upstart job: stop UI -> desktop -> restore the UI
 docs/COMPATIBILITY.md what was verified, on which firmware, and why the choices were made
