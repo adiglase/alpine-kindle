@@ -21,7 +21,7 @@ copy. Releases therefore fail rather than publishing an asset that cannot pass t
 
 | Device | SoC / kernel | Userspace | Status |
 |---|---|---|---|
-| **PW5** (Paperwhite 11th gen, 2021) | MediaTek, **4.9.77-lab126** (FW 5.19.2) | armv7l / armhf | **primary target**; shell and fullscreen MATE verified on hardware |
+| **PW5** (Paperwhite 11th gen, 2021) | MediaTek, **4.9.77-lab126** (FW 5.19.2) | armv7l / armhf | **primary target**; shell and fullscreen JWM verified on hardware |
 | PW5 SE | same family | armhf | expected identical |
 | Kindle 10th gen (2019) | i.MX7 / 6SoloLite, kernel 4.1.15 | armv7l, no NEON | community chroot project tested this config on FW 5.18.1 |
 | PW3 (7th gen, 2015) | i.MX6SL, 3.0.x-era kernel, 512 MB | armv7l | upstream project's target; smaller image recommended |
@@ -45,6 +45,8 @@ Everything in this section was read off the device, not taken from a spec sheet.
 | Framebuffer | `/dev/fb0`: 1248x3296, 8bpp grayscale, stride 1248, rotate 3, two 1648-row frames; visible frame = the first 1236x1648 |
 | Display daemon | `pillowd` (upstart job `pillow`) pushes the framebuffer to the panel. **It stops with `lab126_gui`** (`stop on stopping lab126_gui`), which freezes the screen |
 | X + WM | separate upstart job `x` (Xorg + awesome). They **survive** `stop lab126_gui` |
+| JWM idle memory | **145.0 MiB actively used** with Onboard visible and the Kindle UI stopped (three samples: 148412, 148496, 148512 KiB) |
+| Previous desktop idle memory | **216.5 MiB actively used** under the same conditions; JWM saves **71.5 MiB / 33%** |
 
 ### The window-title convention (the hard-won bit)
 
@@ -114,43 +116,36 @@ window manager, and upstart's `lab126_gui` job.
   ([upstart-diagram](https://github.com/KindleModding/kindlemodding.github.io/blob/main/static/kindle-hacking/upstart-diagram.html)).
 
 Verified on the PW5 test device: Xephyr attaches to `:0` after `lab126_gui` is stopped,
-MATE renders fullscreen, and `stop alpine` cleanly removes the mounts and restores the UI.
+JWM renders fullscreen, and `stop alpine` cleanly removes the mounts and restores the UI.
 A surgical UI restart triggered Amazon's `KPPMainAppV2` crash collector once before the Home
 screen recovered, so the upstart route remains experimental; the manual launcher is safer.
 
-## Package audit — 2019 list vs Alpine v3.24 (`armv7`)
+## Desktop package audit — Alpine v3.24 (`armv7`)
 
-| 2019 package | v3.24 `main`+`community` | Action |
+| Component | v3.24 `main`+`community` | Action |
 |---|---|---|
 | `xorg-server-xephyr` | 21.1.24 | keep |
 | `xwininfo`, `xinput`, `xdotool` | present | keep (+ `xdpyinfo`, `xset`, `xauth` added for debugging) |
-| `caja`, `caja-extensions`, `marco` | 1.28.x | keep |
+| `jwm` | 2.4.6 | window manager, application menu, task list, and panel |
 | `onboard` | 1.4.4.2 | keep |
 | `chromium` | 152.x | keep (optional; 127 MiB download / 227 MiB installed) |
 | `netsurf` | 3.11 | keep as the light fallback browser |
-| `gtk-engines` | **gone** | drop; `mate-themes` covers it |
-| `gtk-murrine-engine` | **gone** | drop |
-| `gnome-themes-extra` | **gone** | `adwaita-icon-theme` + `mate-themes` |
-| `consolekit` | **gone** | `elogind` is the modern session stack |
 | `apk search -q ttf-` | matches **1** package (`ttf-liberation`) | fonts renamed to `font-*` (284 packages) |
-| `apk search mate` | matches **76** incl. `-dev`/`-doc`/`-lang` | use `mate-desktop-environment` meta |
 | APKINDEX from `armhf`, tools from `armv7` | mismatch | single arch throughout |
 
 ## Size budget
 
-Resolved for real with `apk --arch armv7` against `v3.24` (`main` + `community`):
-
-| Set | Installed |
-|---|---|
-| MATE + Xorg + onboard + netsurf + fonts + tooling | **714 MiB** |
-| …plus Chromium | **1033 MiB** |
+JWM replaces the previous full desktop environment and its panel, file manager, settings
+daemon, screensaver, applets, accessibility session, and theme packages. A measured
+NetSurf-only build contains **343 MiB** of installed packages, uses **426 MiB** of its ext3
+filesystem, and compresses to a **169 MiB** release archive.
 
 Constraints:
 
 - `/mnt/us` is **FAT32** → the image file must stay **below 4096 MiB**.
 - Swap must be a **block image** (`losetup` + `swapon`), because a swap file requires `bmap`
   and vfat has none.
-- Script defaults: **2560 MiB image + 512 MiB swap** = 3 GiB on a device reporting 5.6 GiB free.
+- Script defaults: **1536 MiB image + 512 MiB swap** = 2 GiB on a device reporting 5.6 GiB free.
 
 ## Tooling / jailbreak context (external, moves fast)
 

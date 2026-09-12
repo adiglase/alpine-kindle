@@ -69,7 +69,8 @@ SSH. That answers "is it black, the wrong size, or not there at all" in seconds.
    initctl status pillow     # want: start/running
    initctl start pillow
    ```
-5. **Out of memory?** MATE needs the UI stopped at 512 MB. `free -m` inside the chroot.
+5. **Out of memory?** JWM is light, but Chromium may still need the UI stopped at 512 MB.
+   Check `free -m` inside the chroot.
 
 Can the chroot reach the Kindle's X server?
 
@@ -105,16 +106,17 @@ and/or run the desktop with the Kindle UI stopped (`start alpine`).
 
 ## Touch input / on-screen keyboard
 
-`onboard` starts with MATE and should appear when you tap an accessible text field. If it does
-not, confirm the process is running and launch it manually if needed:
+`onboard` starts visibly with JWM and reserves the lower part of the screen. It intentionally
+does not use focus-following accessibility services. Use the large `KEYS` tray button to hide
+or show it. If it is absent, confirm the process and restart it:
 
 ```sh
 pgrep -a onboard
-DISPLAY=:1 onboard &
+DISPLAY=:1 /usr/local/bin/kindle-onboard &
 ```
 
-The `-e` option is reserved for MATE's embedded lock-screen keyboard and should not be used for
-the normal desktop keyboard.
+The tray calls `/usr/local/bin/kindle-keyboard toggle` over the session D-Bus. Run that command
+from an xterm to diagnose the toggle independently.
 
 Chromium's `--touch-devices` hint is resolved at launch time from
 `xinput list --id-only 'Xephyr virtual mouse'`; if the virtual pointer has a different name on

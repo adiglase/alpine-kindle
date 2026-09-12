@@ -14,7 +14,7 @@ This is a modernization of [schuhumi/alpine_kindle](https://github.com/schuhumi/
 |---|---|
 | **Target device** | Kindle Paperwhite 5 (11th gen), firmware 5.19.x, Véra jailbreak |
 | **Build verified** | package set resolves against Alpine **v3.24** `armv7`; image builds cleanly |
-| **Runtime verified** | ✅ **end-to-end on PW5 / firmware 5.19.2**: chroot, 512 MB swap, and the MATE desktop fullscreen on the e-ink panel |
+| **Runtime verified** | ✅ **end-to-end on PW5 / firmware 5.19.2**: chroot, 512 MB swap, and the JWM desktop fullscreen on the e-ink panel |
 | **Also expected to work** | any `armhf` Kindle with a touchscreen and ≥512 MB RAM |
 
 ## What's different from upstream
@@ -23,12 +23,12 @@ This is a modernization of [schuhumi/alpine_kindle](https://github.com/schuhumi/
 |---|---|---|
 | Alpine | `edge` as of Aug 2019 | pinned **v3.24** (`main` + `community`) |
 | Bootstrap | scrape APKINDEX + `apk-tools-static`, mixed `armhf`/`armv7` | official **minirootfs** tarball, one arch throughout |
-| Desktop | `apk search mate` wildcard, `consolekit`, `gtk-engines`, `gnome-themes-extra` | **`mate-desktop-environment`** meta (those 4 packages no longer exist upstream) |
+| Desktop | a full desktop environment | **JWM** window manager, panel, and menu |
 | Fonts | `apk search ttf-` — matches 1 package today | explicit `font-dejavu font-liberation font-noto` |
-| Image | 2 GB | configurable, **2.5 GB** default for an 8 GB device |
+| Image | 2 GB | configurable, **1.5 GB** default for an 8 GB device |
 | Swap | none | optional **block swap** image (a swap *file* can't live on vfat) |
-| Touch keyboard | configured | Onboard auto-shows on text focus and docks at the bottom |
-| Screen locking | limited | lock/blanking disabled; Onboard unlock integration is configured for manual testing |
+| Touch keyboard | configured | Onboard starts visibly and has a persistent `KEYS` tray toggle |
+| Screen locking | limited | X blanking is disabled for the e-ink display path |
 | Default account | `alpine` / `alpine` | **no password baked in** — `passwd alpine` on first run |
 
 ## Quick start
@@ -76,7 +76,7 @@ browser selection. On a Debian/Ubuntu Linux host:
 sudo apt install curl e2fsprogs git qemu-user-static unzip util-linux zip
 git clone https://github.com/adiglase/alpine-kindle.git
 cd alpine-kindle
-sudo IMAGESIZE_MB=2560 SWAP_MB=512 ./build-image.sh
+sudo IMAGESIZE_MB=1536 SWAP_MB=512 ./build-image.sh
 sha256sum --check release/alpine.zip.sha256
 ```
 
@@ -86,7 +86,7 @@ checksum and build metadata.
 Options (environment variables):
 
 ```sh
-sudo WITH_CHROMIUM=no ./build-image.sh     # netsurf only: ~700 MiB instead of ~1.0 GiB
+sudo WITH_CHROMIUM=no ./build-image.sh     # smaller NetSurf-only image
 sudo SWAP_MB=0 ./build-image.sh            # no swap image
 sudo IMAGESIZE_MB=4095 ./build-image.sh    # hard ceiling: /mnt/us is FAT32, so < 4 GiB per file
 sudo ALPINE_BRANCH=v3.23 ./build-image.sh  # pin a different stable branch
@@ -108,7 +108,7 @@ rm alpine.zip                             # recover about 500 MB after extractio
 sh alpine.sh                              # a shell inside Alpine (you land in it as root)
 passwd alpine                             # do this first - no password is baked into the image
 exit
-sh alpine.sh startgui                     # MATE desktop (Xephyr on the Kindle's X server)
+sh alpine.sh startgui                     # JWM desktop (Xephyr on the Kindle's X server)
 ```
 
 `startgui` leaves the Kindle UI running. It is the safest first test, but with only 512 MB
@@ -164,7 +164,7 @@ tools/screenshot.sh   dump the panel over SSH, so you can see the screen from yo
 
 ## Two things the desktop needs (512 MB devices)
 
-The Kindle and MATE cannot both have the RAM, and the display path has a trap:
+The desktop and Kindle UI compete for the same 512 MB RAM, and the display path has a trap:
 
 - `stop lab126_gui` frees ~100-150 MB. X and `awesome` are a **separate** upstart job and survive.
 - Stopping the UI also stops **`pillowd`** (`stop on stopping lab126_gui`), which is what pushes

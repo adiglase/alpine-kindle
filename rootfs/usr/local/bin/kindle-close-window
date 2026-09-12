@@ -1,0 +1,5 @@
+#!/bin/sh
+
+window="$(xdotool getactivewindow 2>/dev/null)" || exit 0
+[ -n "$window" ] || exit 0
+xdotool windowclose "$window" 2>/dev/null || true

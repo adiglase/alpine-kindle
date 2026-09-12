@@ -5,7 +5,7 @@
 #
 # Usage on the Kindle:
 #   sh alpine.sh              shell inside Alpine
-#   sh alpine.sh startgui     mount, then start the MATE desktop
+#   sh alpine.sh startgui     mount, then start the JWM desktop
 #   sh alpine.sh cleanup      unmount whatever a killed session left behind
 #
 # Everything this script prints is ALSO appended to alpine-run.log next to the
@@ -170,7 +170,7 @@ unmount_rootfs() {
   umount "$MNT/dev" 2>/dev/null
   sync
   umount "$MNT" 2>/dev/null
-  # MATE processes can take a moment to release the rootfs. Retry for at most
+  # Desktop processes can take a moment to release the rootfs. Retry for at most
   # ten seconds, checking both the logical and resolved mountpoint names.
   i=0
   while rootfs_is_mounted; do
@@ -209,7 +209,7 @@ else
 fi
 
 if [ "$1" = "startgui" ] || [ "$1" = "gui" ]; then
-  say "Starting the MATE desktop (Xephyr on the Kindle's X server)..."
+  say "Starting the JWM desktop (Xephyr on the Kindle's X server)..."
   chroot "$MNT" /startgui.sh
 else
   say "Dropping into Alpine. Type 'exit' to come back to the Kindle."

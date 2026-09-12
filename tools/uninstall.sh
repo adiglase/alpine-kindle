@@ -10,7 +10,7 @@
 #     sh /mnt/us/uninstall.sh --dry-run       # show what would be removed
 #
 # This removes BOTH kinds of trace:
-#   * runtime state:   mounts, loop devices, swap, leftover X/MATE processes
+#   * runtime state:   mounts, loop devices, swap, leftover desktop processes
 #   * installed files: the upstart job on the system partition, and the image and
 #                      scripts on the userstore
 #
@@ -131,7 +131,7 @@ fi
 for p in /proc/[0-9]*; do
   [ -r "$p/comm" ] || continue
   case "$(cat "$p/comm" 2>/dev/null)" in
-    Xephyr|mate-session|marco|mate-panel|caja|mate-screensaver|onboard|mate-settings-daemon)
+    Xephyr|jwm|onboard|xterm|netsurf|chromium)
       say "  killing ${p#/proc/} ($(cat "$p/comm"))"
       run kill "${p#/proc/}" 2>/dev/null
       ;;
@@ -203,7 +203,7 @@ if [ -d "$US/alpine-kindle-docs" ]; then
 fi
 
 # Debug logs from development sessions, if any are present.
-for f in "$US"/mate*.log; do
+for f in "$US"/jwm*.log; do
   [ -e "$f" ] || continue
   say "  removing $(basename "$f")"
   run rm -f "$f"
@@ -212,7 +212,7 @@ done
 if [ "$KEEP_IMAGE" = yes ]; then
   say "  keeping alpine.ext3 and swap.img (--keep-image)"
 else
-  say "  alpine.ext3 is 2.5 GB - deleting it means a full re-copy to reinstall later."
+  say "  alpine.ext3 is large - deleting it means a full re-copy to reinstall later."
   if confirms "Delete alpine.ext3 and swap.img?" y; then
     for f in alpine.ext3 swap.img; do
       [ -e "$US/$f" ] || continue

@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# Onboard's focus-following mode requires an accessibility desktop session.
+# JWM deliberately has none, so start the keyboard visibly and provide a large
+# KEYS button in the tray for explicit show/hide. This keeps input reliable and
+# avoids silently launching an accessibility session and settings services.
+export GSETTINGS_BACKEND=keyfile
+export NO_AT_BRIDGE=1
+unset GTK_MODULES
+
+dimensions="$(xdpyinfo 2>/dev/null | awk '/dimensions:/{print $2; exit}')"
+screen_width="${dimensions%x*}"
+screen_height="${dimensions#*x}"
+case "$screen_width:$screen_height" in
+  *[!0-9:]*|:|*:) screen_width=1236; screen_height=1648 ;;
+esac
+
+keyboard_height=$((screen_height * 30 / 100))
+[ "$keyboard_height" -ge 360 ] || keyboard_height=360
+[ "$keyboard_height" -le 520 ] || keyboard_height=520
+panel_height=112
+keyboard_y=$((screen_height - keyboard_height - panel_height))
+[ "$keyboard_y" -ge 0 ] || keyboard_y=0
+
+exec onboard --layout=Compact --theme=HighContrast \
+  --size="${screen_width}x${keyboard_height}" -x 0 -y "$keyboard_y"

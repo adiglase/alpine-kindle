@@ -119,7 +119,7 @@ Done. Two ways to run it:
   Shell only (lightest, always safe):
       cd $US && sh alpine.sh
 
-  Desktop (MATE), no Kindle UI changes:
+  Desktop (JWM), no Kindle UI changes:
       cd $US && sh alpine.sh startgui
 
   Desktop with the Kindle UI stopped first (frees ~150 MB, needs the upstart job):

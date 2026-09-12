@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<JWM>
+  <!-- Large targets and high contrast are intentional: this is a 300 ppi,
+       touch-only, grayscale display. -->
+  <RootMenu onroot="123" height="82">
+    <Program label="Terminal">xterm -fa "DejaVu Sans Mono" -fs 22</Program>
+    <Program label="Web browser">netsurf</Program>
+    <Program label="Chromium (optional)">/usr/local/bin/kindle-chromium</Program>
+    <Separator/>
+    <Program label="Show / hide keyboard">/usr/local/bin/kindle-keyboard toggle</Program>
+    <Program label="Close active window">/usr/local/bin/kindle-close-window</Program>
+    <Separator/>
+    <Restart label="Restart desktop"/>
+    <Exit label="Exit to Kindle" confirm="true"/>
+  </RootMenu>
+
+  <Group>
+    <Class>Onboard</Class>
+    <Option>nolist</Option>
+    <Option>sticky</Option>
+    <Option>layer:above</Option>
+  </Group>
+
+  <Group>
+    <Name>Onboard</Name>
+    <Option>nolist</Option>
+    <Option>sticky</Option>
+    <Option>layer:above</Option>
+  </Group>
+
+  <Desktops width="1" height="1">
+    <Background type="solid">#ffffff</Background>
+  </Desktops>
+
+  <WindowStyle>
+    <Font>Sans-34:bold</Font>
+    <Width>6</Width>
+    <Height>72</Height>
+    <Corner>0</Corner>
+    <Foreground>#222222</Foreground>
+    <Background>#eeeeee:#c8c8c8</Background>
+    <Active>
+      <Foreground>#000000</Foreground>
+      <Background>#ffffff:#d8d8d8</Background>
+    </Active>
+  </WindowStyle>
+
+  <Tray x="0" y="-1" height="112" autohide="off">
+    <TrayButton label="MENU">root:1</TrayButton>
+    <Spacer width="18"/>
+    <TaskList maxwidth="330"/>
+    <Spacer width="18"/>
+    <TrayButton label="KEYS">exec:/usr/local/bin/kindle-keyboard toggle</TrayButton>
+    <TrayButton label="CLOSE">exec:/usr/local/bin/kindle-close-window</TrayButton>
+    <Clock format="%H:%M"><Button mask="123">exec:xterm -fa "DejaVu Sans Mono" -fs 22</Button></Clock>
+  </Tray>
+
+  <TrayStyle>
+    <Font>Sans-30:bold</Font>
+    <Background>#ffffff</Background>
+    <Foreground>#000000</Foreground>
+    <Outline>#000000</Outline>
+    <Opacity>1.0</Opacity>
+  </TrayStyle>
+
+  <TaskListStyle>
+    <Font>Sans-28</Font>
+    <Foreground>#222222</Foreground>
+    <Background>#ffffff</Background>
+    <Active>
+      <Foreground>#000000</Foreground>
+      <Background>#d0d0d0</Background>
+    </Active>
+  </TaskListStyle>
+
+  <MenuStyle>
+    <Font>Sans-34</Font>
+    <Foreground>#000000</Foreground>
+    <Background>#ffffff</Background>
+    <Active>
+      <Foreground>#ffffff</Foreground>
+      <Background>#000000</Background>
+    </Active>
+    <Outline>#000000</Outline>
+    <Opacity>1.0</Opacity>
+  </MenuStyle>
+
+  <PopupStyle>
+    <Font>Sans-28</Font>
+    <Foreground>#000000</Foreground>
+    <Background>#ffffff</Background>
+  </PopupStyle>
+
+  <StartupCommand>/usr/local/bin/kindle-onboard</StartupCommand>
+  <DoubleClickSpeed>500</DoubleClickSpeed>
+  <DoubleClickDelta>12</DoubleClickDelta>
+  <FocusModel>click</FocusModel>
+  <SnapMode distance="12">border</SnapMode>
+</JWM>

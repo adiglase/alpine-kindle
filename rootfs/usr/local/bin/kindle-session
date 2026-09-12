@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# JWM is the whole desktop session. Onboard is launched by JWM's StartupCommand
+# so it maps under a running window manager and appears automatically.
+export XDG_CURRENT_DESKTOP=JWM
+export DESKTOP_SESSION=jwm
+export GSETTINGS_BACKEND=keyfile
+export NO_AT_BRIDGE=1
+export ONBOARD_X11_ONLY=1
+unset GTK_MODULES
+
+xset s off 2>/dev/null
+xset -dpms 2>/dev/null
+
+jwm -f /etc/jwm/system.jwmrc
+status=$?
+
+# Do not let a keyboard or application keep the chroot mounted after Exit.
+pkill -TERM onboard 2>/dev/null
+for pid_dir in /proc/[0-9]*; do
+  [ -r "$pid_dir/comm" ] || continue
+  case "$(cat "$pid_dir/comm" 2>/dev/null)" in
+    onboard|xterm|netsurf|chromium) kill "${pid_dir#/proc/}" 2>/dev/null || true ;;
+  esac
+done
+
+[ "$status" -eq 0 ] || exit "$status"
+exit 0

@@ -42,6 +42,8 @@ jobs:
           sh   -n tools/install.sh
           sh   -n tools/diag.sh
           sh   -n tools/uninstall.sh
+          for script in rootfs/usr/local/bin/*; do sh -n "$script"; done
+          python3 -c 'import xml.etree.ElementTree as ET; ET.parse("rootfs/etc/jwm/system.jwmrc")'
           # upstart job: check the script bodies parse
           sed -e '/^[a-z-]* script$/d' -e '/^end script$/d' contrib/alpine.conf | sh -n
 
@@ -65,19 +67,19 @@ jobs:
             -X "$REPO/community" \
             fetch --recursive \
                 alpine-base xorg-server-xephyr xwininfo xdpyinfo xauth xdotool xinput xset xterm \
-                dbus dbus-x11 mate-desktop-environment mate-themes mate-icon-theme \
+                dbus dbus-x11 jwm \
                 onboard netsurf sudo bash nano git curl unzip desktop-file-utils \
-                font-dejavu font-liberation font-noto chromium
+                font-dejavu font-liberation font-noto hicolor-icon-theme chromium
 
       - name: Build the image
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             # Tagged releases use the documented, device-ready defaults.
-            sudo ALPINE_BRANCH="$ALPINE_BRANCH" IMAGESIZE_MB=2560 SWAP_MB=512 \
+            sudo ALPINE_BRANCH="$ALPINE_BRANCH" IMAGESIZE_MB=1536 SWAP_MB=512 \
               RELEASE_TAG="$GITHUB_REF_NAME" SOURCE_COMMIT="$GITHUB_SHA" ./build-image.sh
           else
             # Routine CI omits swap and uses a smaller image to save runner time.
-            sudo ALPINE_BRANCH="$ALPINE_BRANCH" IMAGESIZE_MB=2048 SWAP_MB=0 \
+            sudo ALPINE_BRANCH="$ALPINE_BRANCH" IMAGESIZE_MB=1536 SWAP_MB=0 \
               ./build-image.sh
           fi
 
@@ -92,12 +94,18 @@ jobs:
           grep -E '^3\.24\.' <<<"$ALPINE_RELEASE"
           ! debugfs -R "ls /usr/bin" release/alpine.ext3 2>/dev/null | grep -q qemu-arm-static
           test "$(debugfs -R 'cat /etc/shadow' release/alpine.ext3 2>/dev/null | grep '^alpine:' | cut -d: -f2)" = '!'
-          debugfs -R 'cat /etc/dconf/db/local.d/00-kindle' release/alpine.ext3 2>/dev/null \
-            | grep -Fx "embedded-keyboard-command='onboard -e'"
-          debugfs -R 'cat /etc/dconf/db/local.d/00-kindle' release/alpine.ext3 2>/dev/null \
-            | grep -Fx 'toolkit-accessibility=true'
-          debugfs -R 'cat /etc/xdg/autostart/onboard.desktop' release/alpine.ext3 2>/dev/null \
-            | grep -Fx 'Exec=onboard'
+          debugfs -R 'cat /etc/jwm/system.jwmrc' release/alpine.ext3 2>/dev/null \
+            | grep -F '<StartupCommand>/usr/local/bin/kindle-onboard</StartupCommand>'
+          debugfs -R 'cat /usr/local/bin/kindle-session' release/alpine.ext3 2>/dev/null \
+            | grep -Fx 'export NO_AT_BRIDGE=1'
+          debugfs -R 'cat /usr/local/bin/kindle-session' release/alpine.ext3 2>/dev/null \
+            | grep -Fx 'export ONBOARD_X11_ONLY=1'
+          debugfs -R 'cat /home/alpine/.config/glib-2.0/settings/keyfile' release/alpine.ext3 2>/dev/null \
+            | grep -Fx 'start-minimized=false'
+          ! debugfs -R 'ls -l /etc/dconf/db/local.d' release/alpine.ext3 2>/dev/null \
+            | grep -q 00-kindle
+          ! debugfs -R 'cat /etc/apk/world' release/alpine.ext3 2>/dev/null \
+            | grep -E '(^|-)mate($|-)'
           unzip -t release/alpine.zip
           for file in alpine.ext3 alpine.sh alpine.conf install.sh uninstall.sh diag.sh \
                       alpine-kindle-docs/README.md alpine-kindle-docs/LICENSE \

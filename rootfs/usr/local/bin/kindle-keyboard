@@ -1,0 +1,45 @@
+#!/bin/sh
+
+action="${1:-toggle}"
+case "$action" in
+  show|hide) ;;
+  toggle)
+    if xdotool search --onlyvisible --class Onboard >/dev/null 2>&1; then
+      action=hide
+    else
+      action=show
+    fi
+    ;;
+  *) echo "usage: $0 [show|hide|toggle]" >&2; exit 2 ;;
+esac
+
+case "$action" in
+  show) method=Show ;;
+  hide) method=Hide ;;
+esac
+
+dbus-send --session --type=method_call \
+  --dest=org.onboard.Onboard \
+  /org/onboard/Onboard/Keyboard \
+  "org.onboard.Onboard.Keyboard.$method"
+
+[ "$action" = show ] || exit 0
+
+# Onboard restores its schema-default geometry after a hide/show cycle, which
+# ignores the initial command-line size. Put it back above JWM's panel.
+sleep 1
+dimensions="$(xdpyinfo 2>/dev/null | awk '/dimensions:/{print $2; exit}')"
+screen_width="${dimensions%x*}"
+screen_height="${dimensions#*x}"
+case "$screen_width:$screen_height" in
+  *[!0-9:]*|:|*:) screen_width=1236; screen_height=1648 ;;
+esac
+keyboard_height=$((screen_height * 30 / 100))
+[ "$keyboard_height" -ge 360 ] || keyboard_height=360
+[ "$keyboard_height" -le 520 ] || keyboard_height=520
+keyboard_y=$((screen_height - keyboard_height - 112))
+
+for window in $(xdotool search --onlyvisible --class Onboard 2>/dev/null); do
+  xdotool windowsize "$window" "$screen_width" "$keyboard_height" 2>/dev/null || true
+  xdotool windowmove "$window" 0 "$keyboard_y" 2>/dev/null || true
+done

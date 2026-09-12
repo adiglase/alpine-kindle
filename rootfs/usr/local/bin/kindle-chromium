@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if command -v chromium >/dev/null 2>&1; then
+  exec chromium "$@"
+fi
+
+echo "Chromium is not installed in this image (WITH_CHROMIUM=no)." >&2
+exit 1

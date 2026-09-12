@@ -7,7 +7,7 @@ Hardware-related status was established on a real Kindle Paperwhite 5 (11th gen)
 |---|---|---|---|
 | 1 | `stop alpine` leaves the rootfs mounted and the Kindle UI down | **high** | fixed in tree — verified twice on PW5 |
 | 2 | Landscape (`O:LR`) renders with tearing | medium | open — portrait only |
-| 3 | On-screen keyboard (`onboard`) not wired up to MATE | medium | fixed in tree — verified on PW5 |
+| 3 | On-screen keyboard unavailable without a desktop accessibility session | medium | fixed — visible at JWM startup with a tray toggle |
 | 4 | Chromium `--touch-devices` hint may not resolve | low | untested |
 | 5 | No prebuilt GitHub Release | medium | fixed in tree — `v*` tags publish a verified zip |
 | 6 | Memory and swap strategy needs tuning | medium | open — current disk swap works |
@@ -50,12 +50,12 @@ consistent.
    upstart kills a section that overruns, so the loop guaranteed failure. Now bounded, with
    explicit warnings instead of spinning.
 4. Upstart executes job sections with error-exit behavior. The first rootfs `umount` normally
-   returned busy while MATE was still exiting, which aborted `post-stop` before its retry and
+   returned busy while desktop processes were still exiting, which aborted `post-stop` before its retry and
    before the UI restart. Expected failures are now handled explicitly.
 5. `/tmp` resolves to `/var/tmp`, so matching only `on /tmp/alpine` falsely reported that a
    live `/var/tmp/alpine` mount was gone. Mount checks now compare both logical and resolved
    paths through `/proc/mounts`.
-6. A chroot-scoped `dbus-launch` survived `mate-session` and held the `/proc` bind. `post-stop`
+6. A chroot-scoped session bus survived the desktop and held the `/proc` bind. `post-stop`
    now kills only processes whose resolved root is inside the Alpine mount, retries each bind
    mount separately for at most ten seconds, and never detaches the rootfs loop while mounted.
 7. The job's swap setup used only `losetup -f`, which names a nonexistent flat node on this
@@ -113,17 +113,13 @@ Until then `startgui.sh` hardcodes `O:U`.
 
 ## 3. On-screen keyboard — fixed
 
-Onboard now starts hidden with the MATE session and automatically appears when an accessible
-text field receives focus. It uses the compact, high-contrast layout and docks to the bottom
-500 pixels of the 1236x1648 portrait display, shrinking the application work area while shown.
+Onboard starts visibly from JWM's startup command with a compact, high-contrast layout sized to
+30% of the display. A persistent `KEYS` tray button calls Onboard's session D-Bus API to show or
+hide it. This is deterministic on a touch-only device and does not require a settings daemon or
+an accessibility session; `NO_AT_BRIDGE=1` prevents GTK from starting one implicitly.
 
-MATE's screensaver XEmbed command is also configured (`onboard -e`). Screen locking remains
-disabled because the screensaver and Kindle's nested e-ink display path still need separate
-hardware validation; enabling a lock by default would make a regression difficult to recover
-from. The configured keyboard removes the previous prerequisite for that future testing.
-
-Verified on a PW5 at 1236x1648: MATE autostarts Onboard, AT-SPI focus events show and hide it,
-and pointer input reaches its keys through Xephyr. Physical multi-touch gestures remain outside
+The keyboard uses Onboard's X11 input path, so taps are delivered to the previously focused
+application without giving the keyboard focus. Physical multi-touch gestures remain outside
 this issue's single-touch keyboard scope.
 
 ---
@@ -138,7 +134,7 @@ that flag silently does nothing and touch scrolling in Chromium won't work. Unve
 
 ## 5. Prebuilt GitHub Release — fixed
 
-A push of a `v*` tag now builds the documented 2560 MiB image and 512 MiB swap, creates the
+A push of a `v*` tag now builds the documented 1536 MiB image and 512 MiB swap, creates the
 tagged GitHub Release if needed, and attaches `alpine.zip`, `alpine.zip.sha256`, and
 `BUILD-INFO.txt`. CI verifies the checksum and archive both before upload and after downloading
 the published assets. The README leads with this no-build path; local builds remain supported
@@ -151,9 +147,12 @@ per-release Alpine version record.
 ## 6. Memory and swap strategy
 
 The device has **474 MB usable RAM** (a 512 MB device), plus the Kindle's existing 128 MB
-`/dev/zram0`. MATE with the Kindle UI still running is too tight for comfortable use. The
-experimental upstart path stops the UI and has been measured at about 451 MB used with about
-57 MB of the project's 512 MB disk swap in use.
+`/dev/zram0`. For comparison, the removed MATE stack measured **216.5 MiB actively used RAM**
+(the `-/+ buffers/cache` value) after settling on the PW5 with the Kindle UI stopped. Under the
+same conditions JWM + Onboard settled at **145.0 MiB actively used RAM**, a **71.5 MiB (33%)
+reduction**. The three JWM samples were 148412, 148496, and 148512 KiB. Swap was excluded from
+the comparison because repeated development restarts had already populated the Kindle's
+persistent zram device.
 
 Chromium is slow and battery-heavy in this budget; `netsurf` is the better default for e-ink.
 A second zram device may outperform disk swap and could shrink the release, but it must be

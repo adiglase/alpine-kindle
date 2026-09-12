@@ -18,9 +18,9 @@ set -euo pipefail
 
 ALPINE_BRANCH="${ALPINE_BRANCH:-v3.24}"   # pin a stable branch, never "edge"
 ARCH="${ARCH:-armv7}"                     # Kindle armhf userspace
-IMAGESIZE_MB="${IMAGESIZE_MB:-2560}"      # MUST stay below 4096: /mnt/us is FAT32
+IMAGESIZE_MB="${IMAGESIZE_MB:-1536}"      # MUST stay below 4096: /mnt/us is FAT32
 SWAP_MB="${SWAP_MB:-512}"                 # 0 disables the swap image
-WITH_CHROMIUM="${WITH_CHROMIUM:-yes}"     # "no" -> netsurf only, ~700 MiB image
+WITH_CHROMIUM="${WITH_CHROMIUM:-yes}"     # "no" -> omit the heavyweight browser
 REPO="https://dl-cdn.alpinelinux.org/alpine"
 REPO_INSECURE="http://dl-cdn.alpinelinux.org/alpine"   # http inside chroot: no ca-certificates yet
 
@@ -35,11 +35,11 @@ PKGS=(
   alpine-base
   xorg-server-xephyr xwininfo xdpyinfo xauth xdotool xinput xset xterm
   dbus dbus-x11
-  mate-desktop-environment mate-themes mate-icon-theme
+  jwm
   onboard
   netsurf
   sudo bash nano git curl unzip desktop-file-utils
-  font-dejavu font-liberation font-noto
+  font-dejavu font-liberation font-noto hicolor-icon-theme
 )
 [ "$WITH_CHROMIUM" = "yes" ] && PKGS+=( chromium )
 
@@ -120,7 +120,7 @@ $REPO_INSECURE/$ALPINE_BRANCH/main
 $REPO_INSECURE/$ALPINE_BRANCH/community
 EOF
 echo kindle > "$MNT/etc/hostname"
-mkdir -p "$MNT/run/dbus" "$MNT/etc/dconf/db/local.d" "$MNT/etc/dconf/profile"
+mkdir -p "$MNT/run/dbus"
 
 # Post-install scripts need these live kernel interfaces.
 mount -o bind /dev     "$MNT/dev"
@@ -158,106 +158,35 @@ EOF
 chroot "$MNT" /usr/bin/qemu-arm-static /bin/sh /tmp/setup.sh
 rm -f "$MNT/tmp/setup.sh"
 
+# Onboard 1.4.4.2 enables its AT-SPI text tracker unconditionally for Wayland
+# direct insertion, even when auto-show and word suggestions are disabled. This
+# project is X11-only and uses Onboard's key-synthesis fallback.
+# Add a small opt-in guard so the JWM session neither needs nor starts AT-SPI.
+ONBOARD_PYDIR="$(find "$MNT/usr/lib" -type d -path '*/site-packages/Onboard' -print -quit)"
+[ -n "$ONBOARD_PYDIR" ] || die "Could not find the installed Onboard Python package."
+grep -q '^import unicodedata$' "$ONBOARD_PYDIR/TextContext.py" \
+  || die "Unexpected Onboard TextContext.py; refusing to apply the X11-only patch."
+grep -q 'self.text_context = self.atspi_text_context' "$ONBOARD_PYDIR/WordSuggestions.py" \
+  || die "Unexpected Onboard WordSuggestions.py; refusing to apply the X11-only patch."
+sed -i '/^import unicodedata$/a import os' "$ONBOARD_PYDIR/TextContext.py"
+sed -i 's/_state_tracker = AtspiStateTracker()/_state_tracker = None if os.environ.get("ONBOARD_X11_ONLY") == "1" else AtspiStateTracker()/' \
+  "$ONBOARD_PYDIR/TextContext.py"
+sed -i 's/^        self.text_context.enable(True)$/        if os.environ.get("ONBOARD_X11_ONLY") != "1":\n            self.text_context.enable(True)/' \
+  "$ONBOARD_PYDIR/WordSuggestions.py"
+
 ########################### 3. DESKTOP SETUP ########################
 
-log "Writing desktop configuration"
+log "Writing JWM desktop configuration"
 
-# The Kindle UI stays in charge of the X display; Xephyr nests inside it.
-# -cc 4 = TrueColor. The window title is the hint awesome uses to fullscreen it.
-cat > "$MNT/startgui.sh" <<'EOF'
-#!/bin/sh
-# Runs inside the chroot. Nests an X server on the Kindle's :0 and starts MATE.
-chmod a+w /dev/shm 2>/dev/null
-
-# Warn loudly when the desktop user has no password: it is the difference between
-# "a browser bug" and "an attacker owns the Kindle".
-if grep -q '^alpine:[!*]' /etc/shadow 2>/dev/null; then
-  echo "WARNING: user 'alpine' has no password set."
-  echo "         Run 'passwd alpine' (as root in 'sh alpine.sh') before browsing."
-fi
-
-# A system bus of our own: the Kindle's vanishes when its UI is stopped.
-mkdir -p /run/dbus
-[ -S /run/dbus/system_bus_socket ] || dbus-daemon --system --fork 2>/dev/null
-
-SIZE="$(xwininfo -root -display :0 | grep -i geometry | cut -d' ' -f4)"
-[ -n "$SIZE" ] || SIZE=1236x1648
-
-# The window title is a lab126 convention the Kindle's WM parses:
-#   L:<layer> N:<role> ID:<id> WS:true O:<orientation>
-# L:A (application layer) plus WS:true plus O:U is what makes the window
-# fullscreen. The 2019 upstream title "L:D_N:application_ID:xephyr" lands in the
-# DIALOG layer instead and the window stays 100x100 forever, because the WM
-# intercepts and ignores clients' own resize requests.
-# Verified on firmware 5.19.2 (PW5). Re-check with tools/screenshot.sh after any
-# firmware update - the convention is proprietary and can change.
-env DISPLAY=:0 Xephyr :1 -title "L:A_N:application_ID:xephyr_WS:true_O:U" \
-    -ac -br -screen "$SIZE" -cc 4 -reset -terminate &
-sleep 3
-su alpine -c "env DISPLAY=:1 mate-session"
-killall Xephyr
-EOF
-chmod +x "$MNT/startgui.sh"
-
-# Disable screen locking / blanking: mate-screensaver still fights Xephyr on the
-# Kindle display path. Onboard's XEmbed command is configured nevertheless, so
-# lock testing cannot strand a touch-only user if locking is enabled manually.
-printf 'user-db:user\nsystem-db:local\n' > "$MNT/etc/dconf/profile/user"
-cat > "$MNT/etc/dconf/db/local.d/00-kindle" <<'EOF'
-[org/mate/screensaver]
-lock-enabled=false
-idle-activation-enabled=false
-embedded-keyboard-enabled=true
-embedded-keyboard-command='onboard -e'
-
-[org/mate/power-manager]
-sleep-display-ac=0
-sleep-display-battery=0
-
-# Onboard's focus detection uses AT-SPI. Enable accessibility for MATE and GTK
-# so the accessibility bus is activated when applications join the session.
-[org/mate/desktop/interface]
-accessibility=true
-
-[org/gnome/desktop/interface]
-toolkit-accessibility=true
-
-# Start hidden and appear when an accessible text widget receives focus. This
-# keeps the keyboard from consuming the small e-ink work area when it is idle.
-[org/onboard]
-layout='Compact'
-theme='HighContrast'
-system-theme-tracking-enabled=false
-show-status-icon=false
-start-minimized=true
-
-[org/onboard/auto-show]
-enabled=true
-tablet-mode-detection-enabled=false
-
-[org/onboard/window]
-docking-enabled=true
-docking-shrink-workarea=true
-docking-edge='bottom'
-
-[org/onboard/window/portrait]
-dock-height=500
-EOF
-
-# The packaged desktop file is an application launcher, not a session
-# autostart entry. Run one Onboard process for MATE; auto-show above controls
-# when its window is visible. AT-SPI is already started by the MATE session.
-mkdir -p "$MNT/etc/xdg/autostart"
-cat > "$MNT/etc/xdg/autostart/onboard.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=On-screen Keyboard
-Comment=Show Onboard when a text field receives focus
-Exec=onboard
-OnlyShowIn=MATE;
-X-MATE-Autostart-enabled=true
-NoDisplay=true
-EOF
+# Install the small, reviewable desktop overlay. Keeping these files outside
+# this build script lets CI validate their shell and XML before building a
+# multi-gigabyte image.
+cp -a "$HERE/rootfs/." "$MNT/"
+chmod 755 "$MNT"/usr/local/bin/kindle-*
+chmod 755 "$MNT/startgui.sh"
+chown -R 0:0 "$MNT/etc/jwm" "$MNT/usr/local/bin" "$MNT/startgui.sh"
+chown -R 1000:1000 "$MNT/home/alpine/.config"
+chroot "$MNT" /usr/bin/qemu-arm-static /usr/bin/jwm -p -f /etc/jwm/system.jwmrc
 
 # Chromium launcher flags. --no-sandbox is required: Kindle kernels generally
 # ship without user namespaces, so the setuid/userns sandbox cannot start.
@@ -277,10 +206,6 @@ CHROMIUM_FLAGS="--no-sandbox --force-device-scale-factor=2 --pull-to-refresh=1 \
 --touch-devices=${mouseid} \
 --user-agent=Mozilla%2F5.0%20%28Linux%3B%20Android%2010%3B%20K%29%20AppleWebKit%2F537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome%2F152.0.0.0%20Mobile%20Safari%2F537.36"
 EOF
-
-# Compile the system dconf database (inside the image, so dconf matches).
-chroot "$MNT" /usr/bin/qemu-arm-static /bin/sh -c \
-  'command -v dconf >/dev/null && dconf update || true'
 
 ########################## 4. FINISH + RELEASE ######################
 
